@@ -12,7 +12,7 @@ struct Node {
 }
 
 enum Data {
-    Value(u8),
+    Value(u16),
     Add,
     Sub,
     Mul,
@@ -33,7 +33,7 @@ fn main() -> Result<(), io::Error> {
     for line in string.lines() {
         let mut iter = line.split(": ");
         let (key, value) = (iter.next().unwrap(), iter.next().unwrap());
-        if let Ok(v) = value.parse::<u8>() {
+        if let Ok(v) = value.parse::<u16>() {
             let node = Node {
                 id: key.into(),
                 data: Data::Value(v),
