@@ -1,23 +1,24 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{self, Read},
+    io::{self, Read, Write},
 };
 
-use petgraph::Graph;
+use petgraph::{dot::Dot, Graph};
 
+#[derive(Debug)]
 struct Node {
     id: String,
     data: Data,
 }
 
+#[derive(Debug)]
 enum Data {
     Value(u16),
     Add,
     Sub,
     Mul,
     Div,
-    Uninit,
 }
 
 fn main() -> Result<(), io::Error> {
@@ -42,7 +43,7 @@ fn main() -> Result<(), io::Error> {
             node_indices.insert(key, i);
         } else {
             let mut iter = value.split(' ');
-            let (oper_1, expr, oper_2) = (
+            let (_oper_1, expr, _oper_2) = (
                 iter.next().unwrap(),
                 iter.next().unwrap(),
                 iter.next().unwrap(),
@@ -61,27 +62,31 @@ fn main() -> Result<(), io::Error> {
                 data,
             });
             node_indices.insert(key, i);
-
-            {
-                let oper_1_index = node_indices.entry(oper_1).or_insert_with(|| {
-                    graph.add_node(Node {
-                        id: key.into(),
-                        data: Data::Uninit,
-                    })
-                });
-                graph.add_edge(i, *oper_1_index, ());
-            }
-            {
-                let oper_2_index = node_indices.entry(oper_2).or_insert_with(|| {
-                    graph.add_node(Node {
-                        id: key.into(),
-                        data: Data::Uninit,
-                    })
-                });
-                graph.add_edge(i, *oper_2_index, ());
-            }
-        };
+        }
     }
+
+    for line in string.lines() {
+        let mut iter = line.split(": ");
+        let (key, value) = (iter.next().unwrap(), iter.next().unwrap());
+        if let Err(_) = value.parse::<u16>() {
+            let mut iter = value.split(' ');
+            let (oper_1, _expr, oper_2) = (
+                iter.next().unwrap(),
+                iter.next().unwrap(),
+                iter.next().unwrap(),
+            );
+
+            let i = node_indices[key];
+            let oper_1_index = node_indices[oper_1];
+            let oper_2_index = node_indices[oper_2];
+            graph.add_edge(i, oper_1_index, ());
+            graph.add_edge(i, oper_2_index, ());
+        }
+    }
+
+    let output = format!("{:?}", Dot::new(&graph));
+    let mut file = File::create("/tmp/graph.dot")?;
+    file.write_all(output.as_bytes())?;
 
     Ok(())
 }
