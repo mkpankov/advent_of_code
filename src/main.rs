@@ -6,7 +6,7 @@ use std::{
 
 use petgraph::{
     dot::Dot,
-    visit::{DfsPostOrder, EdgeRef, IntoNodeReferences, NodeFiltered, Topo},
+    visit::{DfsPostOrder, EdgeRef, IntoNodeIdentifiers, IntoNodeReferences, NodeFiltered, Topo},
     Direction, Graph,
 };
 
@@ -14,6 +14,7 @@ use petgraph::{
 struct Node {
     id: String,
     data: Data,
+    position: u8,
 }
 
 #[derive(Debug)]
@@ -42,6 +43,7 @@ fn main() -> Result<(), io::Error> {
             let node = Node {
                 id: key.into(),
                 data: Data::Value(v),
+                position: 0,
             };
             let i = graph.add_node(node);
             node_indices.insert(key, i);
@@ -64,6 +66,7 @@ fn main() -> Result<(), io::Error> {
             let i = graph.add_node(Node {
                 id: key.into(),
                 data,
+                position: 0,
             });
             node_indices.insert(key, i);
         }
@@ -85,6 +88,8 @@ fn main() -> Result<(), io::Error> {
             let oper_2_index = node_indices[oper_2];
             graph.add_edge(i, oper_1_index, ());
             graph.add_edge(i, oper_2_index, ());
+            *&mut graph[oper_1_index].position = 0;
+            *&mut graph[oper_2_index].position = 1;
         }
     }
 
@@ -108,8 +113,40 @@ fn main() -> Result<(), io::Error> {
             })
             && len > 0
     });
-    let node_refs = nf.node_references();
-    for (i, n) in node_refs {
+    let node_ids: Vec<_> = nf.node_identifiers().collect();
+    for i in node_ids {
+        let n = &graph[i];
+        println!("{i:?} {n:?}");
+        let outgoing_edges = graph.edges_directed(i, Direction::Outgoing);
+        let mut child_nodes: Vec<_> = outgoing_edges
+            .map(|e| (e.target(), graph.node_weight(e.target()).unwrap()))
+            .collect();
+
+        child_nodes.sort_by(|(_, a), (_, b)| a.position.cmp(&b.position));
+
+        let child_values: Vec<_> = child_nodes
+            .into_iter()
+            .flat_map(|(_, n)| match n.data {
+                Data::Value(v) => Some(v),
+                _ => None,
+            })
+            .collect();
+
+        println!("{} {}", child_values[0], child_values[1]);
+
+        let n = &mut graph[i];
+
+        *n = Node {
+            id: n.id.clone(),
+            data: Data::Value(match n.data {
+                Data::Add => child_values[0] + child_values[1],
+                Data::Sub => child_values[0] - child_values[1],
+                Data::Mul => child_values[0] * child_values[1],
+                Data::Div => child_values[0] / child_values[1],
+                _ => unreachable!(),
+            }),
+            position: n.position,
+        };
         println!("{i:?} {n:?}");
     }
 
