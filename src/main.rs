@@ -6,8 +6,8 @@ use std::{
 
 use petgraph::{
     dot::Dot,
-    visit::{DfsPostOrder, Topo},
-    Graph,
+    visit::{DfsPostOrder, EdgeRef, IntoNodeReferences, NodeFiltered, Topo},
+    Direction, Graph,
 };
 
 #[derive(Debug)]
@@ -92,72 +92,26 @@ fn main() -> Result<(), io::Error> {
     let mut file = File::create("/tmp/graph.dot")?;
     file.write_all(output.as_bytes())?;
 
-    let root_index = node_indices["root"];
-    let mut visitor = DfsPostOrder::new(&graph, root_index);
-
-    let mut oper_1 = None;
-    let mut oper_2 = None;
-
-    let mut result = 0;
-    while let Some(i) = visitor.next(&graph) {
-        let n = graph.node_weight(i).unwrap();
-        println!("{n:?}");
-
-        match n.data {
-            Data::Value(v) => {
-                if oper_1.is_none() {
-                    oper_1 = Some(v);
-                } else if oper_2.is_none() {
-                    oper_2 = Some(v);
+    let nf = NodeFiltered::from_fn(&graph, |node_id| {
+        // let node = graph.node_weight(node_id).unwrap();
+        let outgoing_edges = graph.edges_directed(node_id, Direction::Outgoing);
+        let mut len = 0;
+        outgoing_edges
+            .map(|e| graph.node_weight(e.target()).unwrap())
+            .enumerate()
+            .all(|(i, n)| {
+                len = i;
+                match n.data {
+                    Data::Value(_) => true,
+                    _ => false,
                 }
-            }
-            Data::Add => {
-                result = oper_1.unwrap() + oper_2.unwrap();
-                oper_1 = Some(result);
-                oper_2 = None;
-                *(graph.node_weight_mut(i).unwrap()) = Node {
-                    id: n.id.clone(),
-                    data: Data::Value(result),
-                };
-                let n = graph.node_weight(i).unwrap();
-                println!("After Add {n:?}");
-            }
-            Data::Sub => {
-                result = oper_1.unwrap() - oper_2.unwrap();
-                oper_1 = Some(result);
-                oper_2 = None;
-                *(graph.node_weight_mut(i).unwrap()) = Node {
-                    id: n.id.clone(),
-                    data: Data::Value(result),
-                };
-                let n = graph.node_weight(i).unwrap();
-                println!("After Sub {n:?}");
-            }
-            Data::Mul => {
-                result = oper_1.unwrap() * oper_2.unwrap();
-                oper_1 = Some(result);
-                oper_2 = None;
-                *(graph.node_weight_mut(i).unwrap()) = Node {
-                    id: n.id.clone(),
-                    data: Data::Value(result),
-                };
-                let n = graph.node_weight(i).unwrap();
-                println!("After Mul {n:?}");
-            }
-            Data::Div => {
-                result = oper_1.unwrap() / oper_2.unwrap();
-                oper_1 = Some(result);
-                oper_2 = None;
-                *(graph.node_weight_mut(i).unwrap()) = Node {
-                    id: n.id.clone(),
-                    data: Data::Value(result),
-                };
-                let n = graph.node_weight(i).unwrap();
-                println!("After Div {n:?}");
-            }
-        }
+            })
+            && len > 0
+    });
+    let node_refs = nf.node_references();
+    for (i, n) in node_refs {
+        println!("{i:?} {n:?}");
     }
-    println!("{oper_1:?} {oper_2:?}");
 
     Ok(())
 }
