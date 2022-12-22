@@ -19,7 +19,7 @@ struct Node {
 
 #[derive(Debug)]
 enum Data {
-    Value(u16),
+    Value(usize),
     Add,
     Sub,
     Mul,
@@ -39,7 +39,7 @@ fn main() -> Result<(), io::Error> {
     for line in string.lines() {
         let mut iter = line.split(": ");
         let (key, value) = (iter.next().unwrap(), iter.next().unwrap());
-        if let Ok(v) = value.parse::<u16>() {
+        if let Ok(v) = value.parse::<usize>() {
             let node = Node {
                 id: key.into(),
                 data: Data::Value(v),
@@ -97,57 +97,71 @@ fn main() -> Result<(), io::Error> {
     let mut file = File::create("/tmp/graph.dot")?;
     file.write_all(output.as_bytes())?;
 
-    let nf = NodeFiltered::from_fn(&graph, |node_id| {
-        // let node = graph.node_weight(node_id).unwrap();
-        let outgoing_edges = graph.edges_directed(node_id, Direction::Outgoing);
-        let mut len = 0;
-        outgoing_edges
-            .map(|e| graph.node_weight(e.target()).unwrap())
-            .enumerate()
-            .all(|(i, n)| {
-                len = i;
-                match n.data {
-                    Data::Value(_) => true,
-                    _ => false,
-                }
-            })
-            && len > 0
-    });
-    let node_ids: Vec<_> = nf.node_identifiers().collect();
-    for i in node_ids {
-        let n = &graph[i];
-        println!("{i:?} {n:?}");
-        let outgoing_edges = graph.edges_directed(i, Direction::Outgoing);
-        let mut child_nodes: Vec<_> = outgoing_edges
-            .map(|e| (e.target(), graph.node_weight(e.target()).unwrap()))
-            .collect();
+    loop {
+        let nf = NodeFiltered::from_fn(&graph, |node_id| {
+            let outgoing_edges = graph.edges_directed(node_id, Direction::Outgoing);
+            let mut len = 0;
+            outgoing_edges
+                .map(|e| graph.node_weight(e.target()).unwrap())
+                .enumerate()
+                .all(|(i, n)| {
+                    len = i;
+                    match n.data {
+                        Data::Value(_) => true,
+                        _ => false,
+                    }
+                })
+                && len > 0
+        });
+        let node_ids: Vec<_> = nf.node_identifiers().collect();
 
-        child_nodes.sort_by(|(_, a), (_, b)| a.position.cmp(&b.position));
+        if node_ids.is_empty() {
+            break;
+        }
 
-        let child_values: Vec<_> = child_nodes
-            .into_iter()
-            .flat_map(|(_, n)| match n.data {
-                Data::Value(v) => Some(v),
-                _ => None,
-            })
-            .collect();
+        for i in node_ids {
+            let n = &graph[i];
+            println!("{i:?} {n:?}");
+            let outgoing_edges = graph.edges_directed(i, Direction::Outgoing);
+            let mut child_nodes: Vec<_> = outgoing_edges
+                .map(|e| (e.target(), graph.node_weight(e.target()).unwrap()))
+                .collect();
 
-        println!("{} {}", child_values[0], child_values[1]);
+            child_nodes.sort_by(|(_, a), (_, b)| a.position.cmp(&b.position));
 
-        let n = &mut graph[i];
+            let child_values: Vec<_> = child_nodes
+                .iter()
+                .flat_map(|(_, n)| match n.data {
+                    Data::Value(v) => Some(v),
+                    _ => None,
+                })
+                .collect();
 
-        *n = Node {
-            id: n.id.clone(),
-            data: Data::Value(match n.data {
-                Data::Add => child_values[0] + child_values[1],
-                Data::Sub => child_values[0] - child_values[1],
-                Data::Mul => child_values[0] * child_values[1],
-                Data::Div => child_values[0] / child_values[1],
-                _ => unreachable!(),
-            }),
-            position: n.position,
-        };
-        println!("{i:?} {n:?}");
+            println!("{} {}", child_values[0], child_values[1]);
+
+            let n = &mut graph[i];
+
+            *n = Node {
+                id: n.id.clone(),
+                data: Data::Value(match n.data {
+                    Data::Add => child_values[0] + child_values[1],
+                    Data::Sub => child_values[0] - child_values[1],
+                    Data::Mul => child_values[0] * child_values[1],
+                    Data::Div => child_values[0] / child_values[1],
+                    _ => unreachable!(),
+                }),
+                position: n.position,
+            };
+            println!("{i:?} {n:?}");
+
+            let outgoing_edges_ids: Vec<_> = graph
+                .edges_directed(i, Direction::Outgoing)
+                .map(|e| e.id())
+                .collect();
+            for e in outgoing_edges_ids {
+                graph.remove_edge(e);
+            }
+        }
     }
 
     Ok(())
